@@ -280,10 +280,11 @@ public class BoardDetector {
     }
 
     private List<Coin> detectCoins(int[] px, int w, int h, RectF board, float minR, float maxR) {
-        int bL=Math.max(0,(int)(board.left  +board.width() *0.04f));
-        int bR=Math.min(w,(int)(board.right -board.width() *0.04f));
-        int bT=Math.max(0,(int)(board.top   +board.height()*0.04f));
-        int bB=Math.min(h,(int)(board.bottom-board.height()*0.04f));
+        // 9% inset on each side to exclude decorative border patterns
+        int bL=Math.max(0,(int)(board.left  +board.width() *0.09f));
+        int bR=Math.min(w,(int)(board.right -board.width() *0.09f));
+        int bT=Math.max(0,(int)(board.top   +board.height()*0.09f));
+        int bB=Math.min(h,(int)(board.bottom-board.height()*0.09f));
 
         List<float[]> whites=new ArrayList<>(), blacks=new ArrayList<>(),
                 reds=new ArrayList<>(), blues=new ArrayList<>();
@@ -300,10 +301,11 @@ public class BoardDetector {
             }
         }
         List<Coin> out = new ArrayList<>();
-        cluster(whites, Coin.COLOR_WHITE, maxR*1.6f, minR, maxR,       out);
-        cluster(blacks, Coin.COLOR_BLACK, maxR*1.6f, minR, maxR,       out);
-        cluster(reds,   Coin.COLOR_RED,   maxR*1.2f, minR*0.4f, maxR*0.75f, out);
-        cluster(blues,  PX_BLUE,          maxR*1.8f, minR, maxR*1.5f, out);
+        // Tighter merge radius to avoid merging distinct coins
+        cluster(whites, Coin.COLOR_WHITE, maxR*1.1f, minR, maxR,            out);
+        cluster(blacks, Coin.COLOR_BLACK, maxR*1.1f, minR, maxR,            out);
+        cluster(reds,   Coin.COLOR_RED,   maxR*1.0f, minR*0.4f, maxR*0.8f, out);
+        cluster(blues,  PX_BLUE,          maxR*1.3f, minR, maxR*1.4f,       out);
         nms(out);
         return out;
     }
@@ -314,19 +316,20 @@ public class BoardDetector {
         int maxC=Math.max(r,Math.max(g,b)), minC=Math.min(r,Math.min(g,b));
         int sat=maxC-minC;
 
-        // White/cream coins — high brightness, low saturation
-        // Carrom Pool uses cream/beige coins, not pure white
-        if (lum>120 && sat<90 && r>100 && g>95 && b>75
-                && r>=g && g>=b && (r-b)<120) return Coin.COLOR_WHITE;
+        // White/cream coins:
+        // Must be MUCH brighter than wood surface (wood lum ~110-145)
+        // Must be low saturation (neutral), and blue channel must be high (>130)
+        // This excludes warm wood tones which have low blue channel
+        if (lum > 170 && sat < 55 && b > 140 && r > 150 && g > 145) return Coin.COLOR_WHITE;
 
-        // Black coins — very dark
-        if (lum<60 && r<80 && g<80 && b<80) return Coin.COLOR_BLACK;
+        // Black coins — very dark, near-zero luminosity
+        if (lum < 52 && maxC < 75) return Coin.COLOR_BLACK;
 
-        // Red/queen coin — strong red dominant
-        if (r>130 && g<100 && b<110 && r>g*1.5f && r>b*1.3f) return Coin.COLOR_RED;
+        // Red queen — bright red, low green and blue
+        if (r > 145 && g < 85 && b < 85 && r > g * 1.9f && r > b * 1.8f) return Coin.COLOR_RED;
 
-        // Striker (blue-tinted disc) — bluish or grey-blue
-        if (b>r+15 && b>g && b>80 && lum>60 && lum<210) return PX_BLUE;
+        // Striker — blue-grey disc (noticeably more blue than red)
+        if (b > r + 22 && b > g + 18 && b > 105 && lum > 85 && lum < 195) return PX_BLUE;
 
         return -1;
     }
@@ -370,7 +373,8 @@ public class BoardDetector {
                 Coin b=coins.get(j);
                 float dx=a.pos.x-b.pos.x, dy=a.pos.y-b.pos.y;
                 float d=(float)Math.sqrt(dx*dx+dy*dy);
-                if (d<(a.radius+b.radius)*0.65f) {
+                // Stricter overlap threshold (0.5 vs 0.65) to suppress more false duplicates
+                if (d<(a.radius+b.radius)*0.50f) {
                     if (a.radius>=b.radius) keep[j]=false;
                     else { keep[i]=false; break; }
                 }
