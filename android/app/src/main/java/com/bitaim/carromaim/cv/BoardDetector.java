@@ -117,9 +117,9 @@ public class BoardDetector {
             scaled.add(new Coin(c.pos.x * inv, c.pos.y * inv,
                     c.radius * inv, c.color, false));
 
-        float strikerThreshY = (pb.top + pb.height() * 0.62f) * inv;
+        float strikerThreshY = (pb.top + pb.height() * 0.68f) * inv;
         float boardCX        = srcBoard.centerX();
-        float strikerZoneW   = srcBoard.width() * 0.55f;
+        float strikerZoneW   = srcBoard.width() * 0.70f;
 
         Coin striker = null;
         for (Coin c : scaled) {
@@ -279,35 +279,125 @@ public class BoardDetector {
         return new RectF(cx-side/2f, cy-side/2f, cx+side/2f, cy+side/2f);
     }
 
+    /**
+     * Coin detection via density-map + local-maxima peak search.
+     *
+     * Algorithm:
+     *  1. Classify each pixel by color (white/black/red/blue).
+     *  2. Each matching pixel "votes" by incrementing all cells within a
+     *     circular kernel of radius kernR in a per-color density grid.
+     *  3. Find local maxima in each grid — each peak = one coin centre.
+     *  4. Hard-cap per color (9 white, 9 black, 1 red, 1 striker).
+     *  5. Final NMS removes any remaining cross-color overlaps.
+     */
     private List<Coin> detectCoins(int[] px, int w, int h, RectF board, float minR, float maxR) {
-        // 9% inset on each side to exclude decorative border patterns
-        int bL=Math.max(0,(int)(board.left  +board.width() *0.09f));
-        int bR=Math.min(w,(int)(board.right -board.width() *0.09f));
-        int bT=Math.max(0,(int)(board.top   +board.height()*0.09f));
-        int bB=Math.min(h,(int)(board.bottom-board.height()*0.09f));
+        // 9% inset on each side to skip orange border + inner decorative frame
+        int bL = Math.max(0, (int)(board.left   + board.width()  * 0.09f));
+        int bR = Math.min(w, (int)(board.right  - board.width()  * 0.09f));
+        int bT = Math.max(0, (int)(board.top    + board.height() * 0.09f));
+        int bB = Math.min(h, (int)(board.bottom - board.height() * 0.09f));
+        int gw = bR - bL, gh = bB - bT;
+        if (gw <= 0 || gh <= 0) return new ArrayList<>();
 
-        List<float[]> whites=new ArrayList<>(), blacks=new ArrayList<>(),
-                reds=new ArrayList<>(), blues=new ArrayList<>();
+        // Per-color vote maps (density grids)
+        int cells = gw * gh;
+        float[] wMap = new float[cells]; // white coins
+        float[] bMap = new float[cells]; // black coins
+        float[] rMap = new float[cells]; // red queen
+        float[] sMap = new float[cells]; // striker (blue-grey)
 
-        for (int y=bT; y<bB; y+=scanStep) {
-            for (int x=bL; x<bR; x+=scanStep) {
-                switch (classifyPx(px[y*w+x])) {
-                    case Coin.COLOR_WHITE: whites.add(new float[]{x,y}); break;
-                    case Coin.COLOR_BLACK: blacks.add(new float[]{x,y}); break;
-                    case Coin.COLOR_RED:   reds  .add(new float[]{x,y}); break;
-                    case PX_BLUE:          blues .add(new float[]{x,y}); break;
-                    default: break;
+        // Spread radius — slightly smaller than coin radius so peaks stay sharp
+        int kernR = Math.max(2, (int)(maxR * 0.55f));
+        int kernR2 = kernR * kernR;
+
+        for (int y = bT; y < bB; y += scanStep) {
+            for (int x = bL; x < bR; x += scanStep) {
+                int color = classifyPx(px[y * w + x]);
+                if (color < 0) continue;
+                float[] map;
+                switch (color) {
+                    case Coin.COLOR_WHITE: map = wMap; break;
+                    case Coin.COLOR_BLACK: map = bMap; break;
+                    case Coin.COLOR_RED:   map = rMap; break;
+                    case PX_BLUE:          map = sMap; break;
+                    default: continue;
+                }
+                int gx = x - bL, gy = y - bT;
+                // Accumulate circular vote kernel
+                for (int dy2 = -kernR; dy2 <= kernR; dy2++) {
+                    int gy2 = gy + dy2;
+                    if (gy2 < 0 || gy2 >= gh) continue;
+                    for (int dx2 = -kernR; dx2 <= kernR; dx2++) {
+                        if (dx2 * dx2 + dy2 * dy2 > kernR2) continue;
+                        int gx2 = gx + dx2;
+                        if (gx2 < 0 || gx2 >= gw) continue;
+                        map[gy2 * gw + gx2] += 1f;
+                    }
                 }
             }
         }
+
+        float coinR   = (minR + maxR) * 0.5f;
+        float queenR  = coinR * 0.72f;
+        float strikerR= coinR * 1.15f;
+        int   suppR   = (int)(coinR * 1.9f);          // suppression radius between coins
+        // Minimum peak value: expect at least ~25% of kernel area to be filled
+        float minPeak = (float)(Math.PI * kernR2 * 0.25f / (scanStep * scanStep));
+        float minPeakSmall = minPeak * 0.3f;          // relaxed for red queen / striker
+
         List<Coin> out = new ArrayList<>();
-        // Tighter merge radius to avoid merging distinct coins
-        cluster(whites, Coin.COLOR_WHITE, maxR*1.1f, minR, maxR,            out);
-        cluster(blacks, Coin.COLOR_BLACK, maxR*1.1f, minR, maxR,            out);
-        cluster(reds,   Coin.COLOR_RED,   maxR*1.0f, minR*0.4f, maxR*0.8f, out);
-        cluster(blues,  PX_BLUE,          maxR*1.3f, minR, maxR*1.4f,       out);
+        peakDetect(wMap, gw, gh, Coin.COLOR_WHITE, bL, bT, coinR,    suppR,     minPeak,      9, out);
+        peakDetect(bMap, gw, gh, Coin.COLOR_BLACK, bL, bT, coinR,    suppR,     minPeak,      9, out);
+        peakDetect(rMap, gw, gh, Coin.COLOR_RED,   bL, bT, queenR,   suppR,     minPeakSmall, 1, out);
+        peakDetect(sMap, gw, gh, PX_BLUE,          bL, bT, strikerR, suppR * 2, minPeakSmall, 2, out);
         nms(out);
         return out;
+    }
+
+    /**
+     * Finds up to maxCoins local maxima in `map` above `threshold`,
+     * using greedy suppression within suppR pixels of each accepted peak.
+     */
+    private void peakDetect(float[] map, int w, int h, int color,
+                             int offX, int offY, float coinR,
+                             int suppR, float threshold, int maxCoins,
+                             List<Coin> out) {
+        // Collect candidate local maxima
+        List<int[]> peaks = new ArrayList<>();
+        for (int y = 1; y < h - 1; y++) {
+            for (int x = 1; x < w - 1; x++) {
+                float v = map[y * w + x];
+                if (v < threshold) continue;
+                // 3×3 strict local maximum
+                boolean isMax = true;
+                outer:
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (dx == 0 && dy == 0) continue;
+                        if (map[(y + dy) * w + (x + dx)] >= v) { isMax = false; break outer; }
+                    }
+                if (isMax) peaks.add(new int[]{x, y, (int)(v * 100)});
+            }
+        }
+
+        // Sort highest confidence first
+        peaks.sort((a, b) -> b[2] - a[2]);
+
+        // Greedy NMS — keep up to maxCoins non-overlapping peaks
+        boolean[] used = new boolean[peaks.size()];
+        int suppR2 = suppR * suppR;
+        int added  = 0;
+        for (int i = 0; i < peaks.size() && added < maxCoins; i++) {
+            if (used[i]) continue;
+            int[] p = peaks.get(i);
+            out.add(new Coin(p[0] + offX, p[1] + offY, coinR, color, false));
+            added++;
+            for (int j = i + 1; j < peaks.size(); j++) {
+                if (used[j]) continue;
+                int dx = peaks.get(j)[0] - p[0], dy = peaks.get(j)[1] - p[1];
+                if (dx * dx + dy * dy < suppR2) used[j] = true;
+            }
+        }
     }
 
     private int classifyPx(int p) {
@@ -332,34 +422,6 @@ public class BoardDetector {
         if (b > r + 22 && b > g + 18 && b > 105 && lum > 85 && lum < 195) return PX_BLUE;
 
         return -1;
-    }
-
-
-    private void cluster(List<float[]> pts, int color, float mergeR,
-                         float minR, float maxR, List<Coin> out) {
-        if (pts.isEmpty()) return;
-        List<float[]> cl = new ArrayList<>();
-        for (float[] pt : pts) {
-            float bestD=mergeR; int bi=-1;
-            for (int i=0; i<cl.size(); i++) {
-                float[] c=cl.get(i);
-                float dx=pt[0]-c[0], dy=pt[1]-c[1];
-                float d=(float)Math.sqrt(dx*dx+dy*dy);
-                if (d<bestD) { bestD=d; bi=i; }
-            }
-            if (bi>=0) {
-                float[] c=cl.get(bi); float n=c[2];
-                c[0]=(c[0]*n+pt[0])/(n+1);
-                c[1]=(c[1]*n+pt[1])/(n+1);
-                c[2]=n+1;
-            } else cl.add(new float[]{pt[0],pt[1],1});
-        }
-        int minHits=Math.max(2,(int)(Math.PI*minR*minR/(scanStep*scanStep)*0.12f));
-        for (float[] c : cl) {
-            if (c[2]<minHits) continue;
-            float estR=(float)Math.sqrt(c[2]*scanStep*scanStep/Math.PI);
-            out.add(new Coin(c[0],c[1],Math.max(minR,Math.min(maxR,estR)),color,false));
-        }
     }
 
     private void nms(List<Coin> coins) {
