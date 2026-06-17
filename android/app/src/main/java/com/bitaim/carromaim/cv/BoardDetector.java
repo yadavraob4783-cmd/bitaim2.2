@@ -40,9 +40,14 @@ public class BoardDetector {
     private static final int PX_BOARD_BORDER = 10;
     private static final int PX_BLUE         = 11;
 
-    private final int  procW;
-    private final float emaA;
-    private final int  scanStep;
+    private int  procW;
+    private float emaA;
+    private int  scanStep;
+
+    private float lastValidMinR = 0f;
+    private float lastValidMaxR = 0f;
+
+    private TFLiteDetector aiDetector;
 
     private RectF smoothedBoard = null;
     private int[] pixelBuf      = null;
@@ -50,6 +55,18 @@ public class BoardDetector {
     public BoardDetector() { this(null); }
 
     public BoardDetector(Context ctx) {
+        boolean lowEnd = isLowEndDevice(ctx);
+        procW    = lowEnd ? 240 : 360;
+        emaA     = lowEnd ? 0.14f : 0.10f;
+        scanStep = lowEnd ? 4 : 3;
+        Log.i(TAG, "BoardDetector init: procW=" + procW + " lowEnd=" + lowEnd);
+    }
+
+    public void setAiDetector(TFLiteDetector detector) {
+        this.aiDetector = detector;
+    }
+
+    public synchronized void setScreenSize(Context ctx) {
         boolean lowEnd = isLowEndDevice(ctx);
         procW    = lowEnd ? 240 : 360;
         emaA     = lowEnd ? 0.14f : 0.10f;
@@ -104,13 +121,35 @@ public class BoardDetector {
 
         smoothedBoard = smoothRect(smoothedBoard, rawBoard);
         RectF pb = smoothedBoard;
+        float inv = 1f / scale;
+        RectF srcBoard = scaleRect(pb, inv);
 
+        // ---------------------------------------------------------
+        // AI DETECTION (Option 3 - Machine Learning)
+        // ---------------------------------------------------------
+        if (aiDetector != null && aiDetector.isReady()) {
+            List<Coin> aiCoins = aiDetector.detectObjects(src, srcBoard);
+            if (!aiCoins.isEmpty()) {
+                GameState s = new GameState();
+                s.board = srcBoard;
+                for (Coin c : aiCoins) {
+                    if (c.color == Coin.COLOR_STRIKER || c.isStriker) {
+                        s.striker = c;
+                    } else if (c.color != PX_BLUE) {
+                        s.coins.add(c);
+                    }
+                }
+                addPockets(s);
+                return s;
+            }
+        }
+
+        // ---------------------------------------------------------
+        // CV DETECTION FALLBACK (If AI fails or model is missing)
+        // ---------------------------------------------------------
         float minR = pb.width() * COIN_R_MIN;
         float maxR = pb.width() * COIN_R_MAX;
         List<Coin> coins = detectCoins(pixelBuf, pW, pH, pb, minR, maxR);
-
-        float inv = 1f / scale;
-        RectF srcBoard = scaleRect(pb, inv);
 
         List<Coin> scaled = new ArrayList<>(coins.size());
         for (Coin c : coins)

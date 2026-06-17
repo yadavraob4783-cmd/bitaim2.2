@@ -50,6 +50,10 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    
+    aaptOptions {
+        noCompress "tflite"
+    }
 }
 
 dependencies {
@@ -58,4 +62,9 @@ dependencies {
     implementation "com.google.android.material:material:1.9.0"
     implementation "androidx.multidex:multidex:2.0.1"
     implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+    
+    // TensorFlow Lite AI Dependencies
+    implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.14.0'
 }

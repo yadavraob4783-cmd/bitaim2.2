@@ -31,6 +31,7 @@ import androidx.core.app.NotificationCompat;
 import com.bitaim.carromaim.MainActivity;
 import com.bitaim.carromaim.R;
 import com.bitaim.carromaim.cv.BoardDetector;
+import com.bitaim.carromaim.cv.TFLiteDetector;
 import com.bitaim.carromaim.cv.GameState;
 import com.bitaim.carromaim.overlay.FloatingOverlayService;
 
@@ -70,8 +71,12 @@ public class ScreenCaptureService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        Log.i(TAG, "ScreenCaptureService started");
         INSTANCE = this;
         detector = new BoardDetector(getApplicationContext());
+        TFLiteDetector aiDetector = new TFLiteDetector(getApplicationContext());
+        detector.setAiDetector(aiDetector);
+        
         createChannel();
         Notification notif = buildNotification();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
