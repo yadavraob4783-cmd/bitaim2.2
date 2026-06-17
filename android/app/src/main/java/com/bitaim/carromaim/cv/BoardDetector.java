@@ -311,12 +311,26 @@ public class BoardDetector {
     private int classifyPx(int p) {
         int r=(p>>16)&0xFF, g=(p>>8)&0xFF, b=p&0xFF;
         int lum=(r+g+b)/3;
-        if (lum>150&&r>130&&g>130&&b>110&&(Math.max(r,Math.max(g,b))-Math.min(r,Math.min(g,b)))<70) return Coin.COLOR_WHITE;
-        if (lum<70&&r<85&&g<85&&b<85) return Coin.COLOR_BLACK;
-        if (r>120&&g<85&&b<95&&r>g*1.7f&&r>b*1.5f) return Coin.COLOR_RED;
-        if (b>r+20&&b>g&&b>90&&lum>70&&lum<200&&r<160&&g<170) return PX_BLUE;
+        int maxC=Math.max(r,Math.max(g,b)), minC=Math.min(r,Math.min(g,b));
+        int sat=maxC-minC;
+
+        // White/cream coins — high brightness, low saturation
+        // Carrom Pool uses cream/beige coins, not pure white
+        if (lum>120 && sat<90 && r>100 && g>95 && b>75
+                && r>=g && g>=b && (r-b)<120) return Coin.COLOR_WHITE;
+
+        // Black coins — very dark
+        if (lum<60 && r<80 && g<80 && b<80) return Coin.COLOR_BLACK;
+
+        // Red/queen coin — strong red dominant
+        if (r>130 && g<100 && b<110 && r>g*1.5f && r>b*1.3f) return Coin.COLOR_RED;
+
+        // Striker (blue-tinted disc) — bluish or grey-blue
+        if (b>r+15 && b>g && b>80 && lum>60 && lum<210) return PX_BLUE;
+
         return -1;
     }
+
 
     private void cluster(List<float[]> pts, int color, float mergeR,
                          float minR, float maxR, List<Coin> out) {
