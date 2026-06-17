@@ -26,7 +26,9 @@ jobs:
         run: |
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-34" \
-            "build-tools;34.0.0"
+            "build-tools;34.0.0" \
+            "ndk;25.1.8937393" \
+            "cmake;3.22.1"
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
