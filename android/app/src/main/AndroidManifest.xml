@@ -48,11 +48,7 @@
         <service
             android:name=".overlay.FloatingOverlayService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="aim_overlay" />
-        </service>
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- Screen capture foreground service -->
         <service

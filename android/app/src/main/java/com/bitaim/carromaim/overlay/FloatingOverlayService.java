@@ -120,9 +120,10 @@ public class FloatingOverlayService extends Service {
 
         createNotificationChannel();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-            startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         else
             startForeground(NOTIF_ID, buildNotification());
+
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         setupAimOverlay();
