@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <string>
+#include <cstring>
+#include <string.h>
 #include <android/log.h>
 #include <unistd.h>
 #include <stdio.h>
