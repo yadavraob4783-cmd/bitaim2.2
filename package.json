@@ -1,0 +1,10 @@
+{
+  "name": "aimxassist-workspace",
+  "private": true,
+  "scripts": {
+    "typecheck": "pnpm --filter @workspace/aim-assist run typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3"
+  }
+}

@@ -1,0 +1,7 @@
+-keep class com.bitaim.carromaim.** { *; }
+-keep class com.facebook.react.** { *; }
+-keep class com.facebook.hermes.** { *; }
+-keepclassmembers class * extends android.app.Service { *; }
+-keepclassmembers class * extends android.accessibilityservice.AccessibilityService { *; }
+-dontwarn com.facebook.react.**
+-dontwarn kotlin.**

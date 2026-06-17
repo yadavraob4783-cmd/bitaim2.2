@@ -1,0 +1,12 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+*.log
+.env
+android/.gradle/
+android/app/.cxx/
+android/app/build/
+android/build/
+*.apk
+*.aab
