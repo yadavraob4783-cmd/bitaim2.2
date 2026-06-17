@@ -34,6 +34,14 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
       - name: Build Debug APK
         working-directory: android
         run: |
