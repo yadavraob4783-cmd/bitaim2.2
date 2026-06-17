@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -19,38 +19,27 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 11076708
-          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
-          accept-android-sdk-licenses: true
 
-      - name: Generate local.properties
-        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;23.1.7779620"
 
-      - name: Install Gradle 8.7
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.7'
+      - name: Write local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/23.1.7779620" >> android/local.properties
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: npm install
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
       - name: Build Debug APK
         working-directory: android
-        run: |
-          gradle assembleDebug \
-            -Dorg.gradle.jvmargs="-Xmx4g" \
-            --no-daemon \
-            --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          JAVA_HOME: ${{ env.JAVA_HOME }}
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
